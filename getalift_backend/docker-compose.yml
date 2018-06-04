@@ -1,0 +1,25 @@
+version: "3"
+services:
+    web:
+        build: .
+        ports:
+            - "3000:3000"
+        restart: on-failure
+    db:
+        image: "mysql"
+        environment:
+            MYSQL_ROOT_PASSWORD: root
+            MYSQL_DATABASE: gal_db
+            MYSQL_USER: gal_user
+            MYSQL_PASSWORD: gal_pwd
+    phpmyadmin:
+        image: phpmyadmin/phpmyadmin
+        container_name: phpmyadmin
+        environment: 
+            - PMA_ARBITRARY=1
+        restart: always
+        ports:
+            - 8080:80
+        volumes:
+            - /sessions
+

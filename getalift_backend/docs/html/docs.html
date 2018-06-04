@@ -1,0 +1,55 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="Content-Style-Type" content="text/css" />
+  <meta name="generator" content="pandoc" />
+  <title></title>
+  <style type="text/css">code{white-space: pre;}</style>
+  <link rel="stylesheet" href="pandoc.css" type="text/css" />
+</head>
+<body>
+<div id="TOC">
+<ul>
+<li><a href="#getalift---backend-documentation">GetALift - BackEnd Documentation</a><ul>
+<li><a href="#about-this-project">About this project</a></li>
+<li><a href="#edit-this-documentation">Edit this documentation</a></li>
+<li><a href="#installation-guide">Installation guide</a><ul>
+<li><a href="#with-docker">With Docker</a></li>
+<li><a href="#manually">Manually</a></li>
+</ul></li>
+</ul></li>
+</ul>
+</div>
+<h1 id="getalift---backend-documentation">GetALift - BackEnd Documentation</h1>
+<p>In this document, you can learn everything about how to use and extend the back-end side of the GetALift app.</p>
+<h2 id="about-this-project">About this project</h2>
+<p>This project was made in an internship at the Malta University by <a href="http://www.argann.me">Argann BONNEAU</a></p>
+<h2 id="edit-this-documentation">Edit this documentation</h2>
+<p>If you want to edit this documentation, this is what you must do :</p>
+<ol style="list-style-type: decimal">
+<li>First, you need to install <a href="http://pandoc.org/installing.html">pandoc</a> in order to convert the Markdown file to HTML.</li>
+<li>Edit the markdown file <code>/docs/src/docs.md</code></li>
+<li>Build the documentation using the script at <code>/docs/build.sh</code>.</li>
+</ol>
+<blockquote>
+<p>If you can't use the script, just launch the line in it in your terminal.</p>
+</blockquote>
+<h2 id="installation-guide">Installation guide</h2>
+<p>There are two different installation method. The first one, and the simplest, is to use <a href="https://docs.docker.com/engine/installation/">docker</a> and <a href="https://docs.docker.com/compose/">docker-compose</a>. The second is to set up everything by hand on your computer.</p>
+<p>Whatever you chose, you need to clone the git repository first by using the following command :</p>
+<p><code>git clone [git repository url]</code></p>
+<h3 id="with-docker">With Docker</h3>
+<p>With this method, you don't even need anything pre-installed on your computer, except Docker <em>itself</em>. If you don't know how it works, maybe you can take a look at the <a href="https://docs.docker.com/">official documentation</a>.</p>
+<ol style="list-style-type: decimal">
+<li>Install <a href="https://docs.docker.com/engine/installation/">docker</a> and <a href="https://docs.docker.com/compose/install/">docker-compose</a>.</li>
+<li>With a command line, go to the project folder.</li>
+<li>Build and launch the project by using the following command : <code>docker-compose up --build</code></li>
+<li>Enjoy !</li>
+</ol>
+<p>Even if you can change that in the <code>Dockerfile</code> and the <code>docker-compose.yml</code>, the listening port for the app is <code>3000</code>.</p>
+<p>If you want to manage the database, there is a <em>PHPMyAdmin</em> service running at port <code>8080</code>. The file docker-compose.yml set everything you need to log in to the database.</p>
+<h3 id="manually">Manually</h3>
+<p><em>to do</em></p>
+</body>
+</html>
