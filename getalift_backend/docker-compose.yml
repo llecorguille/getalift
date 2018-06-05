@@ -4,7 +4,7 @@ services:
         build: .
         ports:
             - "3000:3000"
-        restart: on-failure
+        restart: always
     db:
         image: "mysql"
         environment:
@@ -15,11 +15,10 @@ services:
     phpmyadmin:
         image: phpmyadmin/phpmyadmin
         container_name: phpmyadmin
-        environment: 
+        environment:
             - PMA_ARBITRARY=1
         restart: always
         ports:
             - 8080:80
         volumes:
             - /sessions
-

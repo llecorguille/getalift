@@ -3,7 +3,7 @@ FROM node:latest
 # This is the Dockerfile used to build the Docker image and container
 # for the backend of the GetALift app.
 #
-# If you don't know how Docker works, you better go read the docs 
+# If you don't know how Docker works, you better go read the docs
 # before updating something here.
 
 

@@ -46,9 +46,10 @@ var bcrypt = require("bcrypt");
 // Database connection configuration
 var db_con = mysql.createConnection({
 	host: "db",
-	user: "gal_user",
-	password: "gal_pwd",
+	user: "root",
+	password: "root",
 	database: "gal_db",
+	insecureAuth:true,
 	multipleStatements: true
 });
 
@@ -155,9 +156,10 @@ router.post("/users", function(req, res){
 // Description	:
 //					This route must be used before any other request, in order to
 //					get the token that allow the user to use the others API routes.
+
 router.post("/auth", function(req, res){
 	// Search for the correct user.
-	db_con.query("SELECT * FROM User WHERE username = ?", [req.body.name], function(err, result){
+	db_con.query("SELECT * FROM User WHERE username = ?", [req.body.username], function(err, result){
 		// If there is an error, throw it.
 		if (err) throw err;
 		// If there is one user with this username...
@@ -167,7 +169,7 @@ router.post("/auth", function(req, res){
 				if(bres){
 					// It's the good one !
 					// We create the token based on this user and our super secret.
-					var token = jwt.sign(result[0], app.get("superSecret"));
+					var token = jwt.sign(JSON.stringify(result[0]), app.get("superSecret"));
 					// And we send it.
 					res.json({ success: true, message: "Auth succeed !", token: token, user: result[0] });
 				} else {
@@ -177,7 +179,7 @@ router.post("/auth", function(req, res){
 			});
 		} else {
 			// If there is no correct user, we send a failure.
-			res.json({ success: false, message: "Auth failed. Wrong username." });
+			res.json({ success: false, message: "Auth failed. Wrong username."});
 		}
 	});
 });
@@ -478,7 +480,7 @@ router.put("/routes", function(req, res){
 	var startLng = parseFloat(req.body.startLng);
 	var endLat = parseFloat(req.body.endLat);
 	var endLng = parseFloat(req.body.endLng);
-    
+
     var origin = req.body.origin
     var destination = req.body.destination
     var distance = req.body.distance
@@ -874,7 +876,7 @@ router.delete("/favoriteRoute/:routeId", function(req, res){
 });
 
 
-/* Ne fonctionne pas 
+/* Ne fonctionne pas
 router.delete("/favoriteRouteDoublons", function(req, res){
 	db_con.query("DELETE FROM FavoriteRoute LEFT OUTER JOIN (SELECT MIN(FavoriteRoute.id) as (routeId, userId) FROM FavoriteRoute GROUP BY (FavoriteRoute.routeId, FavoriteRoute.userId)) as t1 ON FavoriteRoute.id = t1.id WHERE t1.id IS NULL", function(err, result){
 		if(err) throw err;
