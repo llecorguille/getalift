@@ -33,7 +33,6 @@ var config = require("./config");
 
 // The google maps client, with the API key
 var googleMapsClient = require("@google/maps").createClient({
-	//key: "AIzaSyBs8kWpOEQ4Qts0ZBP7hehi3cAhOwfyiH0"
 	key: "AIzaSyDpo3fxBUp4aByqHf4cFTGLx5z6dMD16Jw"
 });
 
@@ -470,6 +469,8 @@ router.get("/search2/", function(req, res){
 // 		- endLng				: The Longitude of the end point
 // 		- dates					: The array of dates for this route.
 // 		- driverId			: The User ID of the driver
+//		- origin			: Starting place
+//		- destination		: Ending place
 // Return		:
 // 		- the mysql object for this query.
 // Description	:
@@ -484,11 +485,9 @@ router.put("/routes", function(req, res){
 
     var origin = req.body.origin
     var destination = req.body.destination
-    var distance = req.body.distance
-    var duration = req.body.duration
 
-	//var dates = req.body.dates.split(";");
-	var dates = ["11-04-2018","12-04-2018"];
+	var dates = req.body.dates.split(";");
+	//var dates = ["11-04-2018","12-04-2018"];
 	//console.log(req.body.dates)
 	//console.log(dates);
 
@@ -506,6 +505,9 @@ router.put("/routes", function(req, res){
 		if(error){
 			res.json(error);
 		} else {
+			var distance = response.json.routes[0].legs[0].distance.value;
+			var duration = response.json.routes[0].legs[0].duration.value;
+
 			// If there is no error, we put the new route into the database.
 			db_con.query("INSERT INTO `Route` (`id`, `startingPoint`, `endPoint`, `driver`,`originAdress`,`destinationAdress`,`distance`,`duration`) VALUES (NULL, ST_GeomFromText('POINT(? ?)'), ST_GeomFromText('POINT(? ?)'), ?,? ,? ,? , ?);",
 				[startLat, startLng, endLat, endLng, driverId, origin, destination, distance, duration],
@@ -888,10 +890,52 @@ router.delete("/favoriteRouteDoublons", function(req, res){
 
 */
 
-router.post("/test", function(req, res){
-	var startPoint = {lat:req.body.startLat, long:req.body.startLng};
-	var endPoint =  {lat:req.body.endLat, long:req.body.endLng};
-	calculatePath(startPoint,endPoint,req.body.travelMode);
+
+// Route				: GET /api/routes/findTarget
+// URL Params		:
+// 		- startLat			: The Latitude of the starting point
+// 		- startLng			: The Longitude of the starting point
+// 		- endLat				: The Latitude of the end point
+// 		- endLng				: The Longitude of the end point
+// 		- startDate			: The starting datetime of the route
+// Body Params	: None
+// Return		:
+// 		- An array with every routes that match the parameters.
+// Description	:
+//		This route can be used in order to search for a route that match specific
+//		parameters. Each of these must be provided, none can be null.
+router.post("/findTarget", function(req, res){
+	var startPoint = {lat: parseFloat(req.body.startLat),lng: parseFloat(req.body.startLng)};
+	var endPoint = {lat: parseFloat(req.body.endLat),lng: parseFloat(req.body.endLng)};
+
+	var startDate = req.body.startDate;
+
+	//First target selection
+	db_con.query(
+		"SELECT starting_point.`id` as start_p, end_point.`id` as end_p FROM "+
+			"(SELECT RP.`route`, RP.`point_rank`, RP.`id` FROM `RoutePoints` RP "+
+				"INNER JOIN `Route` R ON R.`id` = RP.`route` "+
+				"INNER JOIN `RouteDate`RD ON R.`id` = RD.`route` "+
+			"WHERE "+
+				"DAYOFWEEK(STR_TO_DATE(?, '%Y-%m-%d %k:%i:%s')) = DAYOFWEEK(`route_date`) "+
+			"ORDER BY "+
+				"ST_Distance(`point`, ST_GeomFromText('Point(? ?)'))) as starting_point, "+
+		"WHERE "+
+			"starting_point.`route` = end_point.`route` "+
+			"AND "+
+			"starting_point.`point_rank` < end_point.`point_rank`; "
+		, [startDate, startPoint.lat, startPoint.lng, endPoint.lat, endPoint.lng],
+		function(err, result){
+			if(err) throw err;
+
+			console.log(result);
+		});
+
+	/*var startPointDriver = {lat: parseFloat(req.body.startLatDriver),lng: parseFloat(req.body.startLngDriver)};
+	var endPointDriver = {lat: parseFloat(req.body.endLatDriver),lng: parseFloat(req.body.endLngDriver)};
+	calculateGlobalPath(startPointPassenger,endPointPassenger,startPointDriver,endPointDriver, function(response){
+		res.json(response);
+	});*/
 });
 
 /* ==================
@@ -901,19 +945,41 @@ router.post("/test", function(req, res){
 
 
 /*
+Calculate the global path of a passenger using GoogleMapsAPI
+This global path includes 3 sub-paths :
+- The walking path between the starting point of the passenger to the point where the passenger and the driver will meet.
+- The driving path between the point where they meet to the point where they separate
+- The walking path between the point where they separate to the ending point of the passenger
+*/
+function calculateGlobalPath(startPointPassenger,endPointPassenger,startPointDriver,endPointDriver,callback){
+	console.log("calculatingGlobalPath");
+	tab = [];
+	calculatePath(startPointPassenger,startPointDriver,"walking", function(response){
+		tab.push(response);
+		calculatePath(startPointDriver,endPointDriver,"driving", function(response){
+			tab.push(response);
+			calculatePath(endPointDriver,endPointPassenger,"walking", function(response){
+				tab.push(response);
+				callback(tab);
+			});
+		});
+	});
+}
+
+/*
 Calculate a path beetween two points using GoogleMapsAPI
 */
-function calculatePath(startingPoint, endingPoint, travelingMode){
+function calculatePath(startPoint,endPoint,travelingMode,callback){
 		googleMapsClient.directions({
-			origin: ""+startingPoint.Lat+","+startingPoint.Long,
-		   	destination: ""+endingPoint.Lat+","+endingPoint.Long,
+			origin: {lat: startPoint.lat, lng: startPoint.lng},
+		   	destination: {lat: endPoint.lat, lng: endPoint.lng},
 		   	mode: travelingMode
 		}, function(error, response){
 			if(error){
 				res.json(error);
+				return null;
 			}else{
-				console.log(response);
-				res.json(response);
+				callback(response);
 			}
 		});
 }
