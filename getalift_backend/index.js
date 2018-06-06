@@ -33,7 +33,8 @@ var config = require("./config");
 
 // The google maps client, with the API key
 var googleMapsClient = require("@google/maps").createClient({
-	key: "AIzaSyBs8kWpOEQ4Qts0ZBP7hehi3cAhOwfyiH0"
+	//key: "AIzaSyBs8kWpOEQ4Qts0ZBP7hehi3cAhOwfyiH0"
+	key: "AIzaSyDpo3fxBUp4aByqHf4cFTGLx5z6dMD16Jw"
 });
 
 var bcrypt = require("bcrypt");
@@ -486,8 +487,8 @@ router.put("/routes", function(req, res){
     var distance = req.body.distance
     var duration = req.body.duration
 
-	var dates = req.body.dates.split(";");
-
+	//var dates = req.body.dates.split(";");
+	var dates = ["11-04-2018","12-04-2018"];
 	//console.log(req.body.dates)
 	//console.log(dates);
 
@@ -887,8 +888,35 @@ router.delete("/favoriteRouteDoublons", function(req, res){
 
 */
 
+router.post("/test", function(req, res){
+	var startPoint = {lat:req.body.startLat, long:req.body.startLng};
+	var endPoint =  {lat:req.body.endLat, long:req.body.endLng};
+	calculatePath(startPoint,endPoint,req.body.travelMode);
+});
+
+/* ==================
+ *	Google Maps API Functions
+ * ==================
+ */
 
 
+/*
+Calculate a path beetween two points using GoogleMapsAPI
+*/
+function calculatePath(startingPoint, endingPoint, travelingMode){
+		googleMapsClient.directions({
+			origin: ""+startingPoint.Lat+","+startingPoint.Long,
+		   	destination: ""+endingPoint.Lat+","+endingPoint.Long,
+		   	mode: travelingMode
+		}, function(error, response){
+			if(error){
+				res.json(error);
+			}else{
+				console.log(response);
+				res.json(response);
+			}
+		});
+}
 
 
 /* ==================
