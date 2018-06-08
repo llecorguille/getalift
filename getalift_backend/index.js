@@ -28,6 +28,8 @@ var bodyParser = require("body-parser");
 // Json web tokens
 var jwt = require("jsonwebtoken");
 
+var math = require("mathjs");
+
 // Configuration file
 var config = require("./config");
 
@@ -907,28 +909,44 @@ router.delete("/favoriteRouteDoublons", function(req, res){
 router.post("/findTarget", function(req, res){
 	var startPoint = {lat: parseFloat(req.body.startLat),lng: parseFloat(req.body.startLng)};
 	var endPoint = {lat: parseFloat(req.body.endLat),lng: parseFloat(req.body.endLng)};
-
 	var startDate = req.body.startDate;
+
+	var query = "SELECT * FROM `Route` R "+
+		"INNER JOIN "+
+			"`RouteDate` RD on R.id = RD.route "+
+		"WHERE "+
+			"RD.route_date > ?";
 
 	//First target selection
 	db_con.query(
-		"SELECT starting_point.`id` as start_p, end_point.`id` as end_p FROM "+
-			"(SELECT RP.`route`, RP.`point_rank`, RP.`id` FROM `RoutePoints` RP "+
-				"INNER JOIN `Route` R ON R.`id` = RP.`route` "+
-				"INNER JOIN `RouteDate`RD ON R.`id` = RD.`route` "+
-			"WHERE "+
-				"DAYOFWEEK(STR_TO_DATE(?, '%Y-%m-%d %k:%i:%s')) = DAYOFWEEK(`route_date`) "+
-			"ORDER BY "+
-				"ST_Distance(`point`, ST_GeomFromText('Point(? ?)'))) as starting_point, "+
-		"WHERE "+
-			"starting_point.`route` = end_point.`route` "+
-			"AND "+
-			"starting_point.`point_rank` < end_point.`point_rank`; "
-		, [startDate, startPoint.lat, startPoint.lng, endPoint.lat, endPoint.lng],
+		query
+		, [startDate],
 		function(err, result){
 			if(err) throw err;
-
 			console.log(result);
+
+			/*FIRST REFINE SELECTION : DEPENDS ON VECTOR DIRECTION*/
+			var passenger_vector = {
+				y: req.body.endLng-req.body.startLng,
+				x: req.body.endLat-req.body.startLat
+			};
+
+			var first_refined_selection = [];
+
+			for(var i=0;i<result.length;i++){
+				var driver_vector = {
+					y: result[i].endPoint.y - result[i].startingPoint.y,
+					x: result[i].endPoint.x - result[i].startingPoint.x
+				};
+				/*If the angle between the passenger direction and the driver direction
+				is lower than 90 degrees, we keep the target, else we don't keep it.*/
+				if(getAngle(passenger_vector,driver_vector)<90){
+					first_refined_selection.push(result[i]);
+				};
+			}
+
+			console.log("#PREMIERE SELECTION");
+			console.log(first_refined_selection);
 		});
 
 	/*var startPointDriver = {lat: parseFloat(req.body.startLatDriver),lng: parseFloat(req.body.startLngDriver)};
@@ -952,7 +970,6 @@ This global path includes 3 sub-paths :
 - The walking path between the point where they separate to the ending point of the passenger
 */
 function calculateGlobalPath(startPointPassenger,endPointPassenger,startPointDriver,endPointDriver,callback){
-	console.log("calculatingGlobalPath");
 	tab = [];
 	calculatePath(startPointPassenger,startPointDriver,"walking", function(response){
 		tab.push(response);
@@ -984,6 +1001,21 @@ function calculatePath(startPoint,endPoint,travelingMode,callback){
 		});
 }
 
+/*
+Calculate the angle between two vectors
+*/
+function getAngle(passenger_vector, driver_vector){
+	//Calcul vectors norm
+	passenger_vector.norm = math.norm([passenger_vector.x, passenger_vector.y]);
+	driver_vector.norm = math.norm([driver_vector.x, driver_vector.y]);
+	// Scalar product calcul, scalar_product = (v1.x * v2.x) + (v1.y * v2.y)
+	var scalar_product = (passenger_vector.x * driver_vector.x) + (passenger_vector.y * driver_vector.y);
+	// Cosinus calcul, cos =  scalar_product / (v1.norm * v2.norm)
+	var cos = scalar_product/(passenger_vector.norm * driver_vector.norm);
+	//Converting from radians to degrees
+	var angle = (math.acos(cos) * 180) / math.PI;
+	return angle;
+}
 
 /* ==================
  *	Server listening
