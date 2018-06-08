@@ -907,9 +907,10 @@ router.delete("/favoriteRouteDoublons", function(req, res){
 //		This route can be used in order to search for a route that match specific
 //		parameters. Each of these must be provided, none can be null.
 router.post("/findTarget", function(req, res){
-	var startPoint = {lat: parseFloat(req.body.startLat),lng: parseFloat(req.body.startLng)};
-	var endPoint = {lat: parseFloat(req.body.endLat),lng: parseFloat(req.body.endLng)};
-	var startDate = req.body.startDate;
+	var passenger = {
+		startPoint: {lat: parseFloat(req.body.startLat),lng: parseFloat(req.body.startLng)},
+		endPoint: {lat: parseFloat(req.body.endLat),lng: parseFloat(req.body.endLng)},
+		startDate: req.body.startDate}
 
 	var query = "SELECT * FROM `Route` R "+
 		"INNER JOIN "+
@@ -920,21 +921,40 @@ router.post("/findTarget", function(req, res){
 	//First target selection
 	db_con.query(
 		query
-		, [startDate],
+		, [passenger.startDate],
 		function(err, result){
 			if(err) throw err;
 			console.log(result);
 
 			/*FIRST REFINE SELECTION : DOES DRIVERS DIRECTION MATCHES WITH PASSENGER ? */
-			var passenger_vector = {
-				y: req.body.endLng-req.body.startLng,
-				x: req.body.endLat-req.body.startLat
-			};
 
-			var first_refined_selection = refineWithAngle(passenger_vector,result);
-
+			var first_refined_selection = refineWithAngle(passenger,result);
 			console.log("#PREMIERE SELECTION");
 			console.log(first_refined_selection);
+
+			/*SECOND REFINE SELECTION : Find route that got route points that are close to the departure and arrival point of the passenger  */
+
+			var conditions="(";
+			first_refined_selection.forEach(function(element,index,array) {
+			  if(index==0){
+				  conditions+=element;
+			  }else{
+				  conditions+=","+element;
+			  }
+			})
+			conditions+=")";
+
+			var query = "SELECT id,point,route,seconds_from_start FROM `RoutePoints` RP "+
+				"WHERE "+
+					"RP.route IN "+conditions;
+
+			db_con.query(
+				query,
+				function(err,result){
+					if(err) throw err;
+					refineWithRoutePoints(passenger,first_refined_selection,result);
+				}
+			)
 		});
 
 	/*var startPointDriver = {lat: parseFloat(req.body.startLatDriver),lng: parseFloat(req.body.startLngDriver)};
@@ -989,10 +1009,60 @@ function calculatePath(startPoint,endPoint,travelingMode,callback){
 		});
 }
 
-/*
 
-*/
-function refineWithAngle(passenger_vector,drivers_vector){
+/* ==================
+ *	Functions used to find drivers routes that could match with the passenger route
+ * ==================
+ */
+
+function refineWithRoutePoints(passenger,first_refined_selection,result){
+	var tab = [];
+	for(var i=0;i<first_refined_selection.length;i++){
+		var tmp_tab = { id : first_refined_selection[i], routePoints: []};
+		for(var j=0;j<result.length;j++){
+			if(result[j].route == first_refined_selection[i]){
+				tmp_tab.routePoints.push(result[j]);
+			}
+		}
+		tab.push(tmp_tab);
+	}
+
+	for(var i=0;i<tab.length;i++){
+		tab[i].closestPointStart = JSON.parse(JSON.stringify(tab[i].routePoints));
+		tab[i].closestPointEnd = JSON.parse(JSON.stringify(tab[i].routePoints));
+		console.log(tab[i].closestPointStart[0].point);
+		console.log(JSON.parse(JSON.stringify(tab[i].routePoints)));
+		for(var j=0;j<tab[i].routePoints.length;j++){
+			tab[i].closestPointStart[j].distance = getDistance(passenger.startPoint.lat,passenger.startPoint.lng,tab[i].closestPointStart[j].point.x,tab[i].closestPointStart[j].point.y);
+			tab[i].closestPointEnd[j].distance = getDistance(passenger.endPoint.lat,passenger.endPoint.lng,tab[i].closestPointStart[j].point.x,tab[i].closestPointStart[j].point.y);
+			if(i==0){
+				console.log("####POINT "+tab[i].closestPointStart[j].id+" ####");
+				console.log(getDistance(passenger.startPoint.lat,passenger.startPoint.lng,tab[i].closestPointStart[j].point.x,tab[i].closestPointStart[j].point.y));
+				console.log(getDistance(passenger.endPoint.lat,passenger.endPoint.lng,tab[i].closestPointStart[j].point.x,tab[i].closestPointStart[j].point.y));
+			}
+		}
+		tab[i].closestPointStart.sort(compareDistance);
+		tab[i].closestPointEnd.sort(compareDistance);
+	}
+
+	console.log(result);
+	for(var i=0;i<tab.length;i++){
+		console.log("############");
+		console.log("Route " + tab[i].id);
+		console.log("Closest Point Start");
+		console.log(tab[i].closestPointStart[0]);
+		console.log("Closest Point End");
+		console.log(tab[i].closestPointEnd[0]);
+	}
+}
+
+ //Return the id of route that matches with the passenger routes
+function refineWithAngle(passenger,drivers_vector){
+	var passenger_vector = {
+		y: passenger.endPoint.lng-passenger.startPoint.lng,
+		x: passenger.endPoint.lat-passenger.startPoint.lat
+	};
+
 	var first_refined_selection = [];
 
 	for(var i=0;i<drivers_vector.length;i++){
@@ -1003,15 +1073,14 @@ function refineWithAngle(passenger_vector,drivers_vector){
 		/*If the angle between the passenger direction and the driver direction
 		is lower than 90 degrees, we keep the target, else we don't keep it.*/
 		if(getAngle(passenger_vector,driver_vector)<90){
-			first_refined_selection.push(drivers_vector[i]);
+			first_refined_selection.push(drivers_vector[i].route);
 		};
 	}
 
 	return first_refined_selection;
 }
-/*
-Calculate the angle between two vectors
-*/
+
+
 function getAngle(passenger_vector, driver_vector){
 	//Calcul vectors norm
 	passenger_vector.norm = math.norm([passenger_vector.x, passenger_vector.y]);
@@ -1023,6 +1092,19 @@ function getAngle(passenger_vector, driver_vector){
 	//Converting from radians to degrees
 	var angle = (math.acos(cos) * 180) / math.PI;
 	return angle;
+}
+
+/*Calcul the distane between two geographical points*/
+function getDistance(xa,ya,xb,yb){
+	return math.sqrt(math.square(xb-xa)+math.square(yb-ya));
+}
+
+function compareDistance(pointA,pointB){
+	if(pointA.distance>pointB.distance){
+		return 1;
+	}else{
+		return -1;
+	}
 }
 
 /* ==================
