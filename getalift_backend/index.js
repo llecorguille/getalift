@@ -925,25 +925,13 @@ router.post("/findTarget", function(req, res){
 			if(err) throw err;
 			console.log(result);
 
-			/*FIRST REFINE SELECTION : DEPENDS ON VECTOR DIRECTION*/
+			/*FIRST REFINE SELECTION : DOES DRIVERS DIRECTION MATCHES WITH PASSENGER ? */
 			var passenger_vector = {
 				y: req.body.endLng-req.body.startLng,
 				x: req.body.endLat-req.body.startLat
 			};
 
-			var first_refined_selection = [];
-
-			for(var i=0;i<result.length;i++){
-				var driver_vector = {
-					y: result[i].endPoint.y - result[i].startingPoint.y,
-					x: result[i].endPoint.x - result[i].startingPoint.x
-				};
-				/*If the angle between the passenger direction and the driver direction
-				is lower than 90 degrees, we keep the target, else we don't keep it.*/
-				if(getAngle(passenger_vector,driver_vector)<90){
-					first_refined_selection.push(result[i]);
-				};
-			}
+			var first_refined_selection = refineWithAngle(passenger_vector,result);
 
 			console.log("#PREMIERE SELECTION");
 			console.log(first_refined_selection);
@@ -1001,6 +989,26 @@ function calculatePath(startPoint,endPoint,travelingMode,callback){
 		});
 }
 
+/*
+
+*/
+function refineWithAngle(passenger_vector,drivers_vector){
+	var first_refined_selection = [];
+
+	for(var i=0;i<drivers_vector.length;i++){
+		var driver_vector = {
+			y: drivers_vector[i].endPoint.y - drivers_vector[i].startingPoint.y,
+			x: drivers_vector[i].endPoint.x - drivers_vector[i].startingPoint.x
+		};
+		/*If the angle between the passenger direction and the driver direction
+		is lower than 90 degrees, we keep the target, else we don't keep it.*/
+		if(getAngle(passenger_vector,driver_vector)<90){
+			first_refined_selection.push(drivers_vector[i]);
+		};
+	}
+
+	return first_refined_selection;
+}
 /*
 Calculate the angle between two vectors
 */
