@@ -952,7 +952,8 @@ router.post("/findTarget", function(req, res){
 				query,
 				function(err,result){
 					if(err) throw err;
-					refineWithRoutePoints(passenger,first_refined_selection,result);
+					var rep = refineWithRoute(passenger,first_refined_selection,result);
+					res.json(rep);
 				}
 			)
 		});
@@ -1015,6 +1016,31 @@ function calculatePath(startPoint,endPoint,travelingMode,callback){
  * ==================
  */
 
+/*this function refine targets depending only from the starting point and the ending point of the driver*/
+ function refineWithRoute(passenger,first_refined_selection,result){
+ 	var tab = [];
+ 	for(var i=0;i<first_refined_selection.length;i++){
+ 		var tmp_tab = { id : first_refined_selection[i], routePoints: []};
+ 		for(var j=0;j<result.length;j++){
+ 			if(result[j].route == first_refined_selection[i]){
+ 				tmp_tab.routePoints.push(result[j]);
+ 			}
+ 		}
+ 		tab.push(tmp_tab);
+ 	}
+
+	var answer_array = [];
+ 	for(var i=0;i<tab.length;i++){
+		var tmp = { id : tab[i].id, closestPointStart : null, closestPointEnd : null, totalDistance : null};
+ 		tmp.closestPointStart = getDistance(passenger.startPoint.lat,passenger.startPoint.lng,tab[i].routePoints[0].point.x,tab[i].routePoints[0].point.y);
+ 		tmp.closestPointEnd = getDistance(passenger.endPoint.lat,passenger.endPoint.lng,tab[i].routePoints[tab[i].routePoints.length-1].point.x,tab[i].routePoints[tab[i].routePoints.length-1].point.y);
+		tmp.totalDistance = tmp.closestPointStart + tmp.closestPointEnd;
+		answer_array.push(tmp);
+	}
+
+	return answer_array;
+ }
+
 function refineWithRoutePoints(passenger,first_refined_selection,result){
 	var tab = [];
 	for(var i=0;i<first_refined_selection.length;i++){
@@ -1030,8 +1056,6 @@ function refineWithRoutePoints(passenger,first_refined_selection,result){
 	for(var i=0;i<tab.length;i++){
 		tab[i].closestPointStart = JSON.parse(JSON.stringify(tab[i].routePoints));
 		tab[i].closestPointEnd = JSON.parse(JSON.stringify(tab[i].routePoints));
-		console.log(tab[i].closestPointStart[0].point);
-		console.log(JSON.parse(JSON.stringify(tab[i].routePoints)));
 		for(var j=0;j<tab[i].routePoints.length;j++){
 			tab[i].closestPointStart[j].distance = getDistance(passenger.startPoint.lat,passenger.startPoint.lng,tab[i].closestPointStart[j].point.x,tab[i].closestPointStart[j].point.y);
 			tab[i].closestPointEnd[j].distance = getDistance(passenger.endPoint.lat,passenger.endPoint.lng,tab[i].closestPointStart[j].point.x,tab[i].closestPointStart[j].point.y);
