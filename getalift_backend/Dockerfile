@@ -6,7 +6,6 @@ FROM node:latest
 # If you don't know how Docker works, you better go read the docs
 # before updating something here.
 
-
 # We load the package.json before the code.
 # With that, Docker only install dependancies if this file change.
 ADD package.json /tmp/package.json

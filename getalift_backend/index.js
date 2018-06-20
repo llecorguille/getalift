@@ -10,6 +10,7 @@
  *	=====================================
  */
 
+/*Server IP : 10.249.45.149*/
 
 /* ==============
  *	Requirements
@@ -39,6 +40,8 @@ var googleMapsClient = require("@google/maps").createClient({
 });
 
 var bcrypt = require("bcrypt");
+
+var kdt = require("kd.tree");
 
 /* ===============
  *	Configuration
@@ -924,16 +927,10 @@ router.post("/findTarget", function(req, res){
 		, [passenger.startDate],
 		function(err, result){
 			if(err) throw err;
-			console.log(result);
-
 			/*FIRST REFINE SELECTION : DOES DRIVERS DIRECTION MATCHES WITH PASSENGER ? */
-
 			var first_refined_selection = refineWithAngle(passenger,result);
-			console.log("#PREMIERE SELECTION");
-			console.log(first_refined_selection);
 
 			/*SECOND REFINE SELECTION : Find route that got route points that are close to the departure and arrival point of the passenger  */
-
 			var conditions="(";
 			first_refined_selection.forEach(function(element,index,array) {
 			  if(index==0){
@@ -952,7 +949,7 @@ router.post("/findTarget", function(req, res){
 				query,
 				function(err,result){
 					if(err) throw err;
-					var rep = refineWithRoute(passenger,first_refined_selection,result);
+					var rep = refineWithRoutePoints(passenger,first_refined_selection,result);
 					res.json(rep);
 				}
 			)
@@ -1041,6 +1038,19 @@ function calculatePath(startPoint,endPoint,travelingMode,callback){
 	return answer_array;
  }
 
+ // URL Params		:
+ // 		- passenger					: passenger object {startPoint : {lat,lng}, endPoint : {lat,lng}}
+ // 		- first_refined_selection	: array containing routesPoints from routes who passed the first refineed selection.
+ // 		- result				: ???
+ // Body Params	: None
+ // Return		:
+ // 		- An array with the 3 best routes
+ // Description	:
+ //		This function is used to find the best target depending on the passenger parameters.
+ //		It use a kd-tree algorithm to find the closest neighbor in a 2D plan composed of every routesPoint of one route.
+ // 	It also calculate the distance in meters between the passenger starting point to the driver closest routePoint
+ //		Same for the passenger ending point.
+
 function refineWithRoutePoints(passenger,first_refined_selection,result){
 	var tab = [];
 	for(var i=0;i<first_refined_selection.length;i++){
@@ -1053,20 +1063,28 @@ function refineWithRoutePoints(passenger,first_refined_selection,result){
 		tab.push(tmp_tab);
 	}
 
+	var distance = function(a, b){
+	  return Math.pow(a.lat - b.lat, 2) +  Math.pow(a.lng - b.lng, 2);
+	}
+
+	//For every routes
 	for(var i=0;i<tab.length;i++){
-		tab[i].closestPointStart = JSON.parse(JSON.stringify(tab[i].routePoints));
-		tab[i].closestPointEnd = JSON.parse(JSON.stringify(tab[i].routePoints));
-		for(var j=0;j<tab[i].routePoints.length;j++){
-			tab[i].closestPointStart[j].distance = getDistance(passenger.startPoint.lat,passenger.startPoint.lng,tab[i].closestPointStart[j].point.x,tab[i].closestPointStart[j].point.y);
-			tab[i].closestPointEnd[j].distance = getDistance(passenger.endPoint.lat,passenger.endPoint.lng,tab[i].closestPointStart[j].point.x,tab[i].closestPointStart[j].point.y);
-			if(i==0){
-				console.log("####POINT "+tab[i].closestPointStart[j].id+" ####");
-				console.log(getDistance(passenger.startPoint.lat,passenger.startPoint.lng,tab[i].closestPointStart[j].point.x,tab[i].closestPointStart[j].point.y));
-				console.log(getDistance(passenger.endPoint.lat,passenger.endPoint.lng,tab[i].closestPointStart[j].point.x,tab[i].closestPointStart[j].point.y));
-			}
+		var points = [];
+		//We had all the routePoints of the route to the kd-tree.
+		for(var j=0; j<tab[i].routePoints.length;j++){
+			points.push({id: tab[i].routePoints[j].id, lat:tab[i].routePoints[j].point.x, lng: tab[i].routePoints[j].point.y})
 		}
-		tab[i].closestPointStart.sort(compareDistance);
-		tab[i].closestPointEnd.sort(compareDistance);
+
+		var tree = new kdt.createKdTree(points, distance, ["lat","lng"]);
+
+		//Find the closest neighbor from the starting point
+		tab[i].closestPointStart = tree.nearest(passenger.startPoint,1);
+		//Find the closest neighbor from the ending point
+		tab[i].closestPointEnd = tree.nearest(passenger.endPoint,1);
+
+		//Calculate distance in meters
+		tab[i].distancePointStart = coordToMeters(passenger.startPoint.lat, passenger.startPoint.lng, tab[i].closestPointStart[0][0].lat, tab[i].closestPointStart[0][0].lng);
+		tab[i].distancePointEnd = coordToMeters(passenger.endPoint.lat, passenger.endPoint.lng, tab[i].closestPointEnd[0][0].lat, tab[i].closestPointEnd[0][0].lng);
 	}
 
 	console.log(result);
@@ -1074,13 +1092,26 @@ function refineWithRoutePoints(passenger,first_refined_selection,result){
 		console.log("############");
 		console.log("Route " + tab[i].id);
 		console.log("Closest Point Start");
-		console.log(tab[i].closestPointStart[0]);
+		console.log(tab[i].closestPointStart);
+		console.log("Distance Point Start");
+		console.log(tab[i].distancePointStart + " meters");
 		console.log("Closest Point End");
-		console.log(tab[i].closestPointEnd[0]);
+		console.log(tab[i].closestPointEnd);
+		console.log("Distance Point End");
+		console.log(tab[i].distancePointEnd + " meters");
 	}
 }
 
- //Return the id of route that matches with the passenger routes
+ // URL Params		:
+ // 		- passenger					: passenger object {startPoint : {lat,lng}, endPoint : {lat,lng}}
+ // 		- drivers_vector	: array of vector of all the routes of the database. The vector goes from the startingPoint to the endingPoint of the route.
+ // Return		:
+ // 		- An array of routes ID
+ // Description	:
+ //		Return the id of routes that matches with the passenger routes direction
+ //		If the angle between the passenger vector and the driver vector is less than 90°, then it returns the route.
+ //    	This function is used to detect every route that goes in the wrong direction in order to reduce the numbers
+ // 	of routes analysed in the second step of the search.
 function refineWithAngle(passenger,drivers_vector){
 	var passenger_vector = {
 		y: passenger.endPoint.lng-passenger.startPoint.lng,
@@ -1122,6 +1153,20 @@ function getAngle(passenger_vector, driver_vector){
 function getDistance(xa,ya,xb,yb){
 	return math.sqrt(math.square(xb-xa)+math.square(yb-ya));
 }
+
+/* Calcul the distance in meters between two geoPoints*/
+function coordToMeters(lat1, lon1, lat2, lon2){  // generally used geo measurement function
+    var R = 6378.137; // Radius of earth in KM
+    var dLat = lat2 * Math.PI / 180 - lat1 * Math.PI / 180;
+    var dLon = lon2 * Math.PI / 180 - lon1 * Math.PI / 180;
+    var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    var d = R * c;
+    return d * 1000; // meters
+}
+
 
 function compareDistance(pointA,pointB){
 	if(pointA.distance>pointB.distance){
