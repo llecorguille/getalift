@@ -93,6 +93,7 @@ var router = express.Router();
 router.get("/", function(req, res){
 	res.json({message: "Hello World !"});
 	console.log("Hello !");
+	addRoute(10);
 });
 
 // --- User Creation ---
@@ -910,6 +911,9 @@ router.delete("/favoriteRouteDoublons", function(req, res){
 //		This route can be used in order to search for a route that match specific
 //		parameters. Each of these must be provided, none can be null.
 router.post("/findTarget", function(req, res){
+	var d = new Date();
+	var t1 = d.getTime();
+
 	var passenger = {
 		startPoint: {lat: parseFloat(req.body.startLat),lng: parseFloat(req.body.startLng)},
 		endPoint: {lat: parseFloat(req.body.endLat),lng: parseFloat(req.body.endLng)},
@@ -929,7 +933,7 @@ router.post("/findTarget", function(req, res){
 			if(err) throw err;
 			/*FIRST REFINE SELECTION : DOES DRIVERS DIRECTION MATCHES WITH PASSENGER ? */
 			var first_refined_selection = refineWithAngle(passenger,result);
-
+			console.log("NB ELEMENTS : "+first_refined_selection.length);
 			/*SECOND REFINE SELECTION : Find route that got route points that are close to the departure and arrival point of the passenger  */
 			var conditions="(";
 			first_refined_selection.forEach(function(element,index,array) {
@@ -950,6 +954,10 @@ router.post("/findTarget", function(req, res){
 				function(err,result){
 					if(err) throw err;
 					var rep = refineWithRoutePoints(passenger,first_refined_selection,result);
+					var d = new Date();
+					var t2 = d.getTime();
+					console.log("TEMPS TOTAL : ");
+					console.log((t2-t1)/1000 +" secondes");
 					res.json(rep);
 				}
 			)
@@ -1085,10 +1093,13 @@ function refineWithRoutePoints(passenger,first_refined_selection,result){
 		//Calculate distance in meters
 		tab[i].distancePointStart = coordToMeters(passenger.startPoint.lat, passenger.startPoint.lng, tab[i].closestPointStart[0][0].lat, tab[i].closestPointStart[0][0].lng);
 		tab[i].distancePointEnd = coordToMeters(passenger.endPoint.lat, passenger.endPoint.lng, tab[i].closestPointEnd[0][0].lat, tab[i].closestPointEnd[0][0].lng);
+		tab[i].totalDistance = tab[i].distancePointStart + tab[i].distancePointEnd;
 	}
 
-	console.log(result);
-	for(var i=0;i<tab.length;i++){
+
+	tab.sort(compareDistance);
+
+	for(var i=0;i<3;i++){
 		console.log("############");
 		console.log("Route " + tab[i].id);
 		console.log("Closest Point Start");
@@ -1169,10 +1180,116 @@ function coordToMeters(lat1, lon1, lat2, lon2){  // generally used geo measureme
 
 
 function compareDistance(pointA,pointB){
-	if(pointA.distance>pointB.distance){
+	if(pointA.totalDistance>pointB.totalDistance){
 		return 1;
 	}else{
 		return -1;
+	}
+}
+//		- startLat			: The Latitude of the starting point
+// 		- startLng			: The Longitude of the starting point
+// 		- endLat				: The Latitude of the end point
+// 		- endLng				: The Longitude of the end point
+// 		- dates					: The array of dates for this route.
+// 		- driverId			: The User ID of the driver
+//		- origin			: Starting place
+//		- destination		: Ending place
+function generateRoutes(nb){
+	for(var i=0; i<nb; i++){
+		var minLng = 14.349733799999967;
+		var maxLng = 14.57017099999996;
+		var minLat = 35.8335387;
+		var maxLat = 35.987778;
+
+		var req = {url : null, method : null, body: {}};
+		req.body.startLng = math.random() * (maxLng-minLng) + minLng;
+		req.body.startLat = math.random() * (maxLat-minLat) + minLat;
+		req.body.endLng = math.random() * (maxLng-minLng) + minLng;
+		req.body.endLat = math.random() * (maxLat-minLat) + minLat;
+		req.body.driverId = 3;
+		req.body.dates = "28-07-2018";
+		req.body.origin = "";
+		req.body.destination = "";
+	}
+}
+
+function addRoute(nb){
+	if(nb > 0){
+		console.log("Creation "+nb);
+		var minLng = 14.349733799999967;
+		var maxLng = 14.57017099999996;
+		var minLat = 35.8335387;
+		var maxLat = 35.987778;
+
+		var req = {url : null, method : null, body: {}};
+		var startLng = math.random() * (maxLng-minLng) + minLng;
+		var startLat = math.random() * (maxLat-minLat) + minLat;
+		var endLng = math.random() * (maxLng-minLng) + minLng;
+		var endLat = math.random() * (maxLat-minLat) + minLat;
+		var driverId = 3;
+		//ar dates = req.body.dates.split(";");
+		//var dates = ["11-04-2018","12-04-2018"];
+		var dates = ["2018-06-08 18:00:00","0"];
+		var origin = "";
+		var destination = "";
+
+		var query = "";
+
+		// We get the directions between the two points with the google maps api.
+		googleMapsClient.directions({
+			origin: ""+startLat+","+startLng,
+			destination: ""+endLat+","+endLng
+		}, function(error, response){
+			// If there is an error with the GM API request, we send it back.
+			if(error){
+				res.json(error);
+			} else {
+				for (var cpt=0;cpt<100;cpt++){
+					var distance = response.json.routes[0].legs[0].distance.value;
+					var duration = response.json.routes[0].legs[0].duration.value;
+
+					// If there is no error, we put the new route into the database.
+					db_con.query("INSERT INTO `Route` (`id`, `startingPoint`, `endPoint`, `driver`,`originAdress`,`destinationAdress`,`distance`,`duration`) VALUES (NULL, ST_GeomFromText('POINT(? ?)'), ST_GeomFromText('POINT(? ?)'), ?,? ,? ,? , ?);",
+						[startLat, startLng, endLat, endLng, driverId, origin, destination, distance, duration],
+						function(err, result){
+							if(err) throw err;
+							// Next, we store the weekly repeat in the database.
+							// Each line of the RouteMeta table store a date, and an time interval from this date.
+							for (var i = 0; i < dates.length-1; i=i+2){
+								query += mysql.format(
+									"INSERT INTO `RouteDate` (`id`, `route`, `route_date`, `weekly_repeat`) VALUES (NULL, ?, ?, ?);",
+									[result.insertId, dates[i], dates[i+1]]
+								);
+							}
+
+							// Finally, we store the points in the table RoutePoints, that we got from the Google Maps Directions API
+							var steps = response.json.routes[0].legs[0].steps;
+							var seconds_from_start = 0;
+							for (var j = 0; j < steps.length; j++){
+								if (j === 0){
+									// If it's the first step, we need to store the starting point adding to the end point.
+									query += mysql.format(
+										"INSERT INTO `RoutePoints` (`id`, `route`, `point_rank`, `point`, `seconds_from_start`) VALUES (NULL, ?, ?, ST_GeomFromText('POINT(? ?)'), ?);",
+										[result.insertId, 0, steps[0].start_location.lat, steps[0].start_location.lng, seconds_from_start]
+									);
+								}
+
+								seconds_from_start += parseInt(steps[j].duration.value);
+								// Then we store the end points for each steps into the database.
+								query += mysql.format(
+									"INSERT INTO `RoutePoints` (`id`, `route`, `point_rank`, `point`, `seconds_from_start`) VALUES (NULL, ?, ?, ST_GeomFromText('POINT(? ?)'), ?);",
+									[result.insertId, j+1, steps[j].end_location.lat, steps[j].end_location.lng, seconds_from_start]
+								);
+							}
+							// Then, we launch the query into the database.
+							db_con.query(query, [], function(e, r){
+								if(e) throw e;
+							});
+						});
+				}
+			}
+		});
+		addRoute(nb-1);
 	}
 }
 

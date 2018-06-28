@@ -70,7 +70,7 @@ CREATE TABLE `Ride` (
 CREATE TABLE `FavoriteRoute` (
   `id` int(11) NOT NULL COMMENT 'The id of the favoriteRoute',
   `routeId` int(11) DEFAULT NULL COMMENT 'The route attached to this save',
-  `userId` int(11) DEFAULT NULL COMMENT 'The user attached to this save' 
+  `userId` int(11) DEFAULT NULL COMMENT 'The user attached to this save'
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COMMENT='A FavoriteRoute is an instance of a route';
 
 
@@ -88,7 +88,7 @@ CREATE TABLE `Route` (
   `originAdress` varchar(128) NOT NULL COMMENT 'The adress of the origin of the route',
   `destinationAdress` varchar(128) NOT NULL COMMENT 'The adress of the destination of the route',
   `distance` varchar(64) NOT NULL COMMENT 'The distance between the origin and the destination of the route' ,
-  `duration` varchar(64) NOT NULL COMMENT 'the duration of the route' 
+  `duration` varchar(64) NOT NULL COMMENT 'the duration of the route'
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COMMENT='List all the routes recorded in the app';
 
 -- --------------------------------------------------------
@@ -168,7 +168,7 @@ ALTER TABLE `Ride`
 --
 ALTER TABLE `FavoriteRoute`
   ADD PRIMARY KEY (`id`);
-  
+
 
 
 --
@@ -217,7 +217,7 @@ ALTER TABLE `Rating`
 --
 ALTER TABLE `Ride`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'The id of the ride';
-  
+
 --
 -- AUTO_INCREMENT for table `Ride`
 --

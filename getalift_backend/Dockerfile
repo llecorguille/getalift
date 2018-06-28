@@ -9,6 +9,7 @@ FROM node:latest
 # We load the package.json before the code.
 # With that, Docker only install dependancies if this file change.
 ADD package.json /tmp/package.json
+ADD node_modules /tmp/node_modules
 RUN cd /tmp && npm install
 RUN mkdir -p /usr/src/app && cp -a /tmp/node_modules /usr/src/app/
 
