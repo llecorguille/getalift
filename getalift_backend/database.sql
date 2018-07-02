@@ -115,6 +115,8 @@ CREATE TABLE `RoutePoints` (
   `route` int(11) DEFAULT NULL COMMENT 'The route linked to this point',
   `point_rank` int(11) NOT NULL COMMENT 'It''s the order of this point in the point list of the route',
   `point` point NOT NULL COMMENT 'The geographical coordinates of this point',
+  `square_id_lng` int(11) NOT NULL COMMENT 'The longitude id of the square of the routePoint',
+  `square_id_lat` int(11) NOT NULL COMMENT 'The latitude id of the square of the routePoint',
   `seconds_from_start` int(11) NOT NULL COMMENT 'An estimation of the number of seconds passed since the start of the route'
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COMMENT='All the geographical points that compose the routes';
 

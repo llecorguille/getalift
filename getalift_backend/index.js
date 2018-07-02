@@ -1186,6 +1186,20 @@ function compareDistance(pointA,pointB){
 		return -1;
 	}
 }
+
+function getSquareId(latitude,longitude){
+	//latitude : from -90 to 90
+	//lat : from 0 to 180
+	var lat = 90 + latitude;
+	//longitude : from -180 to 180
+	//lng : from 0 to 360
+	var lng = 180 + lng;
+
+	var arr = {lat: lat/0.02, lng: lng/0.02};
+	return arr;
+}
+
+
 //		- startLat			: The Latitude of the starting point
 // 		- startLng			: The Longitude of the starting point
 // 		- endLat				: The Latitude of the end point
