@@ -29,7 +29,11 @@ var bodyParser = require("body-parser");
 // Json web tokens
 var jwt = require("jsonwebtoken");
 
+// mathjs
 var math = require("mathjs");
+
+//sleep
+var sleep = require("sleep");
 
 // Configuration file
 var config = require("./config");
@@ -93,7 +97,7 @@ var router = express.Router();
 router.get("/", function(req, res){
 	res.json({message: "Hello World !"});
 	console.log("Hello !");
-	addRoute(10);
+	addRoute(100);
 });
 
 // --- User Creation ---
@@ -531,20 +535,22 @@ router.put("/routes", function(req, res){
 					// Finally, we store the points in the table RoutePoints, that we got from the Google Maps Directions API
 					var steps = response.json.routes[0].legs[0].steps;
 					var seconds_from_start = 0;
+					var squareId = getSquareId(steps[0].start_location.lat, steps[0].start_location.lng);
 					for (var j = 0; j < steps.length; j++){
 						if (j === 0){
 							// If it's the first step, we need to store the starting point adding to the end point.
 							query += mysql.format(
-								"INSERT INTO `RoutePoints` (`id`, `route`, `point_rank`, `point`, `seconds_from_start`) VALUES (NULL, ?, ?, ST_GeomFromText('POINT(? ?)'), ?);",
-								[result.insertId, 0, steps[0].start_location.lat, steps[0].start_location.lng, seconds_from_start]
+								"INSERT INTO `RoutePoints` (`id`, `route`, `point_rank`, `point`, `seconds_from_start`, `square_id_lat`, `square_id_lng`) VALUES (NULL, ?, ?, ST_GeomFromText('POINT(? ?)'), ?, ?, ?);",
+								[result.insertId, 0, steps[0].start_location.lat, steps[0].start_location.lng, seconds_from_start, squareId.lat, squareId.lng]
 							);
 						}
 
+						squareId = getSquareId(steps[j].start_location.lat, steps[j].start_location.lng);
 						seconds_from_start += parseInt(steps[j].duration.value);
 						// Then we store the end points for each steps into the database.
 						query += mysql.format(
-							"INSERT INTO `RoutePoints` (`id`, `route`, `point_rank`, `point`, `seconds_from_start`) VALUES (NULL, ?, ?, ST_GeomFromText('POINT(? ?)'), ?);",
-							[result.insertId, j+1, steps[j].end_location.lat, steps[j].end_location.lng, seconds_from_start]
+							"INSERT INTO `RoutePoints` (`id`, `route`, `point_rank`, `point`, `seconds_from_start`, `square_id_lat`, `square_id_lng`) VALUES (NULL, ?, ?, ST_GeomFromText('POINT(? ?)'), ?, ?, ?);",
+							[result.insertId, j+1, steps[j].end_location.lat, steps[j].end_location.lng, seconds_from_start, squareId.lat, squareId.lng]
 						);
 					}
 					// Then, we launch the query into the database.
@@ -919,49 +925,97 @@ router.post("/findTarget", function(req, res){
 		endPoint: {lat: parseFloat(req.body.endLat),lng: parseFloat(req.body.endLng)},
 		startDate: req.body.startDate}
 
-	var query = "SELECT * FROM `Route` R "+
-		"INNER JOIN "+
-			"`RouteDate` RD on R.id = RD.route "+
-		"WHERE "+
-			"RD.route_date > ?";
+	//Passenger starting point square ID
+	var pSPSI = getSquareId(passenger.startPoint.lat,passenger.startPoint.lng);
+	//Passenger ending point square ID
+	var pEPSI = getSquareId(passenger.endPoint.lat,passenger.endPoint.lng);
 
-	//First target selection
+    var query = "Select distinct route from `RoutePoints` RP "+
+			"WHERE "+
+				"RP.square_id_lng = "+ pSPSI.lng +
+				" AND "+
+				"RP.square_id_lat = "+ pSPSI.lat+
+					" AND "+
+						"RP.route IN "+
+							"("+
+								"Select distinct route from `RoutePoints` RP "+
+									"WHERE "+
+										"RP.square_id_lng = "+ pEPSI.lng +
+											" AND "+
+										"RP.square_id_lat = "+ pEPSI.lat +
+							" )";
+
+	console.log("### FIRST STEP (SQUAREID) ###");
+	console.log(query);
+
 	db_con.query(
 		query
-		, [passenger.startDate],
+		,
 		function(err, result){
 			if(err) throw err;
-			/*FIRST REFINE SELECTION : DOES DRIVERS DIRECTION MATCHES WITH PASSENGER ? */
-			var first_refined_selection = refineWithAngle(passenger,result);
-			console.log("NB ELEMENTS : "+first_refined_selection.length);
-			/*SECOND REFINE SELECTION : Find route that got route points that are close to the departure and arrival point of the passenger  */
+
+			console.log(result);
+
 			var conditions="(";
-			first_refined_selection.forEach(function(element,index,array) {
+			result.forEach(function(element,index,array) {
 			  if(index==0){
-				  conditions+=element;
+				  conditions+=element.route;
 			  }else{
-				  conditions+=","+element;
+				  conditions+=","+element.route;
 			  }
 			})
 			conditions+=")";
 
-			var query = "SELECT id,point,route,seconds_from_start FROM `RoutePoints` RP "+
+			var query = "SELECT * FROM `Route` R "+
+				"INNER JOIN "+
+					"`RouteDate` RD on R.id = RD.route "+
 				"WHERE "+
-					"RP.route IN "+conditions;
+					"RD.route_date > "+"'"+passenger.startDate+"'"+
+				" AND "+
+					"R.id IN " +conditions+";";
 
+			console.log("### SECOND STEP (DATE) ###");
+			console.log(query);
+
+			//First target selection
 			db_con.query(
-				query,
-				function(err,result){
+				query
+				,
+				function(err, result){
 					if(err) throw err;
-					var rep = refineWithRoutePoints(passenger,first_refined_selection,result);
-					var d = new Date();
-					var t2 = d.getTime();
-					console.log("TEMPS TOTAL : ");
-					console.log((t2-t1)/1000 +" secondes");
-					res.json(rep);
-				}
-			)
-		});
+					/*FIRST REFINE SELECTION : DOES DRIVERS DIRECTION MATCHES WITH PASSENGER ? */
+					var second_refined_selection = refineWithAngle(passenger,result);
+					console.log("NB ELEMENTS with angle OK : "+second_refined_selection.length);
+					/*SECOND REFINE SELECTION : Find route that got route points that are close to the departure and arrival point of the passenger  */
+					var conditions="(";
+					second_refined_selection.forEach(function(element,index,array) {
+					  if(index==0){
+						  conditions+=element;
+					  }else{
+						  conditions+=","+element;
+					  }
+					})
+					conditions+=")";
+
+					var query = "SELECT id,point,route,seconds_from_start FROM `RoutePoints` RP "+
+						"WHERE "+
+							"RP.route IN "+conditions;
+
+					db_con.query(
+						query,
+						function(err,result){
+							if(err) throw err;
+							var rep = refineWithRoutePoints(passenger, result);
+							var d = new Date();
+							var t2 = d.getTime();
+							console.log("TEMPS TOTAL : ");
+							console.log((t2-t1)/1000 +" secondes");
+							res.json(rep);
+						}
+					)
+				});
+
+	});
 
 	/*var startPointDriver = {lat: parseFloat(req.body.startLatDriver),lng: parseFloat(req.body.startLngDriver)};
 	var endPointDriver = {lat: parseFloat(req.body.endLatDriver),lng: parseFloat(req.body.endLngDriver)};
@@ -1021,35 +1075,9 @@ function calculatePath(startPoint,endPoint,travelingMode,callback){
  * ==================
  */
 
-/*this function refine targets depending only from the starting point and the ending point of the driver*/
- function refineWithRoute(passenger,first_refined_selection,result){
- 	var tab = [];
- 	for(var i=0;i<first_refined_selection.length;i++){
- 		var tmp_tab = { id : first_refined_selection[i], routePoints: []};
- 		for(var j=0;j<result.length;j++){
- 			if(result[j].route == first_refined_selection[i]){
- 				tmp_tab.routePoints.push(result[j]);
- 			}
- 		}
- 		tab.push(tmp_tab);
- 	}
-
-	var answer_array = [];
- 	for(var i=0;i<tab.length;i++){
-		var tmp = { id : tab[i].id, closestPointStart : null, closestPointEnd : null, totalDistance : null};
- 		tmp.closestPointStart = getDistance(passenger.startPoint.lat,passenger.startPoint.lng,tab[i].routePoints[0].point.x,tab[i].routePoints[0].point.y);
- 		tmp.closestPointEnd = getDistance(passenger.endPoint.lat,passenger.endPoint.lng,tab[i].routePoints[tab[i].routePoints.length-1].point.x,tab[i].routePoints[tab[i].routePoints.length-1].point.y);
-		tmp.totalDistance = tmp.closestPointStart + tmp.closestPointEnd;
-		answer_array.push(tmp);
-	}
-
-	return answer_array;
- }
-
  // URL Params		:
- // 		- passenger					: passenger object {startPoint : {lat,lng}, endPoint : {lat,lng}}
- // 		- first_refined_selection	: array containing routesPoints from routes who passed the first refineed selection.
- // 		- result				: ???
+ // 		- passenger				: passenger object {startPoint : {lat,lng}, endPoint : {lat,lng}}
+ // 		- result				: an array of routes that matches the previous step of the findTarget query
  // Body Params	: None
  // Return		:
  // 		- An array with the 3 best routes
@@ -1059,16 +1087,19 @@ function calculatePath(startPoint,endPoint,travelingMode,callback){
  // 	It also calculate the distance in meters between the passenger starting point to the driver closest routePoint
  //		Same for the passenger ending point.
 
-function refineWithRoutePoints(passenger,first_refined_selection,result){
+function refineWithRoutePoints(passenger,result){
 	var tab = [];
-	for(var i=0;i<first_refined_selection.length;i++){
-		var tmp_tab = { id : first_refined_selection[i], routePoints: []};
-		for(var j=0;j<result.length;j++){
-			if(result[j].route == first_refined_selection[i]){
-				tmp_tab.routePoints.push(result[j]);
-			}
+	var index;
+
+	for(var j=0;j<result.length;j++){
+		index = keyExists(tab,result[j].route);
+		if(index != null){
+			tab[index].routePoints.push(result[j]);
+		}else{
+			var tmp = {id : result[j].route, routePoints : []};
+			tmp.routePoints.push(result[j]);
+			tab.push(tmp);
 		}
-		tab.push(tmp_tab);
 	}
 
 	var distance = function(a, b){
@@ -1099,7 +1130,7 @@ function refineWithRoutePoints(passenger,first_refined_selection,result){
 
 	tab.sort(compareDistance);
 
-	for(var i=0;i<3;i++){
+	for(var i=0;i<tab.length;i++){
 		console.log("############");
 		console.log("Route " + tab[i].id);
 		console.log("Closest Point Start");
@@ -1141,12 +1172,15 @@ function refineWithAngle(passenger,drivers_vector){
 		if(getAngle(passenger_vector,driver_vector)<90){
 			first_refined_selection.push(drivers_vector[i].route);
 		};
+
+		console.log("ROUTE N "+drivers_vector[i].route);
+		console.log("ANGLE : "+getAngle(passenger_vector,driver_vector));
 	}
 
 	return first_refined_selection;
 }
 
-
+/*This function calculate the angle between two vectors*/
 function getAngle(passenger_vector, driver_vector){
 	//Calcul vectors norm
 	passenger_vector.norm = math.norm([passenger_vector.x, passenger_vector.y]);
@@ -1165,7 +1199,7 @@ function getDistance(xa,ya,xb,yb){
 	return math.sqrt(math.square(xb-xa)+math.square(yb-ya));
 }
 
-/* Calcul the distance in meters between two geoPoints*/
+/* Calcul the distance in meters between two geographical points*/
 function coordToMeters(lat1, lon1, lat2, lon2){  // generally used geo measurement function
     var R = 6378.137; // Radius of earth in KM
     var dLat = lat2 * Math.PI / 180 - lat1 * Math.PI / 180;
@@ -1178,7 +1212,7 @@ function coordToMeters(lat1, lon1, lat2, lon2){  // generally used geo measureme
     return d * 1000; // meters
 }
 
-
+/*This function is used to sort a array of distances.*/
 function compareDistance(pointA,pointB){
 	if(pointA.totalDistance>pointB.totalDistance){
 		return 1;
@@ -1187,15 +1221,27 @@ function compareDistance(pointA,pointB){
 	}
 }
 
+/*This function checks if the key exists in the array.*/
+function keyExists(tab,key){
+	for(var i=0; i<tab.length; i++){
+		if(tab[i].id == key){
+			return i;
+		}
+	}
+
+	return null;
+}
+
+/*This function calculate the squareId of a geographical point.*/
 function getSquareId(latitude,longitude){
 	//latitude : from -90 to 90
 	//lat : from 0 to 180
 	var lat = 90 + latitude;
 	//longitude : from -180 to 180
 	//lng : from 0 to 360
-	var lng = 180 + lng;
+	var lng = 180 + longitude;
 
-	var arr = {lat: lat/0.02, lng: lng/0.02};
+	var arr = {lat: math.floor(lat/0.005), lng: math.floor(lng/0.005)};
 	return arr;
 }
 
@@ -1208,25 +1254,6 @@ function getSquareId(latitude,longitude){
 // 		- driverId			: The User ID of the driver
 //		- origin			: Starting place
 //		- destination		: Ending place
-function generateRoutes(nb){
-	for(var i=0; i<nb; i++){
-		var minLng = 14.349733799999967;
-		var maxLng = 14.57017099999996;
-		var minLat = 35.8335387;
-		var maxLat = 35.987778;
-
-		var req = {url : null, method : null, body: {}};
-		req.body.startLng = math.random() * (maxLng-minLng) + minLng;
-		req.body.startLat = math.random() * (maxLat-minLat) + minLat;
-		req.body.endLng = math.random() * (maxLng-minLng) + minLng;
-		req.body.endLat = math.random() * (maxLat-minLat) + minLat;
-		req.body.driverId = 3;
-		req.body.dates = "28-07-2018";
-		req.body.origin = "";
-		req.body.destination = "";
-	}
-}
-
 function addRoute(nb){
 	if(nb > 0){
 		console.log("Creation "+nb);
@@ -1240,7 +1267,7 @@ function addRoute(nb){
 		var startLat = math.random() * (maxLat-minLat) + minLat;
 		var endLng = math.random() * (maxLng-minLng) + minLng;
 		var endLat = math.random() * (maxLat-minLat) + minLat;
-		var driverId = 3;
+		var driverId = 2;
 		//ar dates = req.body.dates.split(";");
 		//var dates = ["11-04-2018","12-04-2018"];
 		var dates = ["2018-06-08 18:00:00","0"];
@@ -1279,20 +1306,22 @@ function addRoute(nb){
 							// Finally, we store the points in the table RoutePoints, that we got from the Google Maps Directions API
 							var steps = response.json.routes[0].legs[0].steps;
 							var seconds_from_start = 0;
+							var squareId = getSquareId(steps[0].start_location.lat, steps[0].start_location.lng);
 							for (var j = 0; j < steps.length; j++){
 								if (j === 0){
 									// If it's the first step, we need to store the starting point adding to the end point.
 									query += mysql.format(
-										"INSERT INTO `RoutePoints` (`id`, `route`, `point_rank`, `point`, `seconds_from_start`) VALUES (NULL, ?, ?, ST_GeomFromText('POINT(? ?)'), ?);",
-										[result.insertId, 0, steps[0].start_location.lat, steps[0].start_location.lng, seconds_from_start]
+										"INSERT INTO `RoutePoints` (`id`, `route`, `point_rank`, `point`, `seconds_from_start`, `square_id_lat`, `square_id_lng`) VALUES (NULL, ?, ?, ST_GeomFromText('POINT(? ?)'), ?, ?, ?);",
+										[result.insertId, 0, steps[0].start_location.lat, steps[0].start_location.lng, seconds_from_start, squareId.lat, squareId.lng]
 									);
 								}
 
+								squareId = getSquareId(steps[j].start_location.lat, steps[j].start_location.lng);
 								seconds_from_start += parseInt(steps[j].duration.value);
 								// Then we store the end points for each steps into the database.
 								query += mysql.format(
-									"INSERT INTO `RoutePoints` (`id`, `route`, `point_rank`, `point`, `seconds_from_start`) VALUES (NULL, ?, ?, ST_GeomFromText('POINT(? ?)'), ?);",
-									[result.insertId, j+1, steps[j].end_location.lat, steps[j].end_location.lng, seconds_from_start]
+									"INSERT INTO `RoutePoints` (`id`, `route`, `point_rank`, `point`, `seconds_from_start`, `square_id_lat`, `square_id_lng`) VALUES (NULL, ?, ?, ST_GeomFromText('POINT(? ?)'), ?, ?, ?);",
+									[result.insertId, j+1, steps[j].end_location.lat, steps[j].end_location.lng, seconds_from_start, squareId.lat, squareId.lng]
 								);
 							}
 							// Then, we launch the query into the database.
@@ -1303,6 +1332,8 @@ function addRoute(nb){
 				}
 			}
 		});
+		//console.log("Sleeping....")
+		//sleep.sleep(2);
 		addRoute(nb-1);
 	}
 }
