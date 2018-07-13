@@ -97,7 +97,7 @@ var router = express.Router();
 router.get("/", function(req, res){
 	res.json({message: "Hello World !"});
 	console.log("Hello !");
-	addRoute(100);
+	//addRoute(100);
 });
 
 // --- User Creation ---
