@@ -54,7 +54,7 @@ var kdt = require("kd.tree");
 
 // Database connection configuration
 var db_con = mysql.createConnection({
-	host: "db",
+	host: "localhost",
 	user: "root",
 	password: "root",
 	database: "gal_db",
@@ -1344,6 +1344,6 @@ function addRoute(nb){
  */
 app.use("/api", router);
 
-app.listen(3000, function () {
-	console.log("[S] Server is listening on port 3000.");
+app.listen(7878, function () {
+	console.log("[S] Server is listening on port 7878.");
 });
