@@ -98,7 +98,8 @@ var router = express.Router();
 router.get("/", function(req, res){
 	res.json({message: "Hello World !"});
 	console.log("Hello !");
-	addRoute(100);
+	//addRoute(100);
+	testGoogleMaps();
 });
 
 // --- User Creation ---
@@ -1335,6 +1336,23 @@ function addRoute(nb){
 		//sleep.sleep(2);
 		addRoute(nb-1);
 	}
+}
+
+function testGoogleMaps(){
+	console.log("test gmap...");
+	googleMapsClient.directions({
+		origin: "35.9015315,14.485157599999999";
+		destination: "35.85411349999999,14.48327949999998";
+	}, function(error, response){
+		// If there is an error with the GM API request, we send it back.
+		if(error){
+			console.log("error");
+			res.json(error);
+		} else {
+			console.log("SUCCESS");
+			console.log(response);
+		}
+	});
 }
 
 /* ==================
