@@ -97,7 +97,7 @@ var router = express.Router();
 router.get("/", function(req, res){
 	res.json({message: "Hello World !"});
 	console.log("Hello !");
-	//addRoute(100);
+	addRoute(100);
 });
 
 // --- User Creation ---
@@ -501,9 +501,7 @@ router.put("/routes", function(req, res){
 	//console.log(req.body.dates)
 	//console.log(dates);
 
-
 	var driverId = req.body.driverId;
-
 	var query = "";
 
 	// We get the directions between the two points with the google maps api.
